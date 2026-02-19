@@ -156,3 +156,101 @@ AH PL brands: AH, AH Biologisch, AH Excellent, AH Terra, AH Basic.
 - Threshold 75 admits some false positives — could raise to 80 for stricter matching at the cost of fewer matches.
 - No category-based pre-filtering yet — this could improve precision.
 - Products without brands in OFF cannot be matched well.
+
+### 8. Category Landscape Analysis (Notebook 03)
+
+**Analysis-ready subset**: 694,313 products (filtered to those with Nutri-Score + category + brand, in categories with >=100 products). 45 L1 categories.
+
+**Key findings from Nutri-Score landscape**:
+- Most food categories are dominated by unhealthy products: median %CDE across categories is ~80%
+- **Worst categories** (95-100% CDE): Taralli, Sweet Pies, Breakfast, Bread Coverings, Pies, Spreads, Desserts, Snacks
+- **Best categories** (low CDE): Eggs (4%), Vegetables (4-6%), Baby Food (20%), Dietary Supplements (34%)
+- Beverages are mixed at 66% CDE
+
+**Brand concentration (HHI)**:
+- Almost all categories are highly fragmented (HHI < 0.05) — easy to enter
+- Only 3 categories show concentration: Vegetables Prepared (0.47-0.68), Taralli (0.42), Capsules (0.15)
+- This means most categories are wide open for new private label entry
+
+**Private label penetration**:
+- Median PL penetration: ~13% across categories
+- Highest PL: Bread Coverings (25%), Sandwiches (22%), Eggs (21%), Meat & Poultry (21%)
+- Lowest PL: Taralli (0%), Meat Products (0%), Capsules (1%), Dietary Supplements (2%)
+- PL at healthy grades (A+B) is much lower — median ~10%. The healthy niche is underserved.
+
+**Top Nutritional Gap Opportunities (Gap = %CDE × (1 - PL@AB))**:
+1. Breakfast (gap=0.935): 98% CDE, only 5% PL among healthy products
+2. Snacks (gap=0.879): 96% CDE, only 9% PL among healthy — HUGE market (119K products)
+3. Desserts (gap=0.839): 95% CDE, only 12% PL among healthy
+4. Fats & Oils (gap=0.834): 86% CDE, almost no healthy PL (4%)
+5. Condiments & Sauces (gap=0.767): 89% CDE, 14% PL among healthy — large market (30K products)
+
+**Price gaps (supermarket data)**:
+- Median PL discount: 22.4% cheaper than national brands
+- 16 categories have >30% PL discount — strong margin potential
+- Price data available from both Mercadona (Spain) and AH (Netherlands)
+
+**numpy array gotcha**: `category_path` in supermarket data is a numpy array, not a Python list. Must use `isinstance(p, (list, np.ndarray))` for type checks.
+
+### 9. Nutritional Gap Deep Dives (Notebook 04)
+
+**Analysis-ready subset**: 837,912 products with Nutri-Score + valid category.
+
+**Top 10 gap categories**: Taralli, Breakfast, Fish And Meat And Eggs, Festive Foods, Snacks, Meat Products, Crepes And Galettes, Desserts, Fats & Oils, Spreads.
+
+**Reformulation feasibility** (7 of 10 categories had viable paths to Nutri-Score B):
+- **Breakfast**: Requires 84% sugar reduction (55g → 9g) — very challenging, suggests reformulation alone won't work; need fundamentally different product concepts.
+- **Crepes & Galettes**: Most achievable — 37% sugar, 56% sat fat, 27% salt reductions.
+- **Fats & Oils / Fish Meat Eggs**: 96% sat fat reduction needed — essentially impossible without changing product category.
+- **Meat Products**: 80% salt reduction (2.2g → 0.4g) — aggressive but commercially possible.
+- **Spreads**: Salt reduction viable.
+- **Snacks and Desserts**: No single-nutrient path found — likely need simultaneous multi-nutrient reformulation.
+
+**PL vs National Brand nutritional quality**:
+- PL column derived from `pl_retailer` (not `is_pl`).
+- Chart generated comparing % A/B products between PL and national brands across top 10 categories.
+
+**Cross-country variation** (top 5 categories across FR, DE, ES, IT, NL):
+- Heatmap shows %CDE varies by country, enabling country-specific launch strategies.
+- France dominates sample sizes due to OFF data concentration.
+
+### 10. Opportunity Scoring & Sensitivity (Notebook 05)
+
+**Composite score formula** (6 normalised [0,1] components):
+- Nutritional gap (25% weight) — from notebook 03
+- Brand fragmentation (15%) — `1 - HHI`
+- Category size (15%) — `log(n_products)`, min-max normalised
+- Reformulation feasibility (15%) — `100 - min_reduction_pct`, inverted so easier = higher
+- PL opportunity (15%) — `1 - pl_penetration`
+- Price gap margin (15%) — uniform 0.5 placeholder (no per-category price data from OFF)
+
+**Top 5 opportunities (by composite score)**:
+1. **Crepes & Galettes** (0.689): moderate gap (0.84) but highest reformulation feasibility
+2. **Condiments & Sauces** (0.672): large market (30K products), gap 0.77
+3. **Breakfast** (0.663): highest gap (0.93) but difficult reformulation (84% sugar reduction)
+4. **Snacks** (0.657): HUGE market (119K products), gap 0.88
+5. **Spreads** (0.655): gap 0.81, moderate market
+
+**Sensitivity analysis** (1000 Monte Carlo simulations with random Dirichlet weights):
+- Ranking stability tested — robust top categories remain in top 5 regardless of weight assumptions.
+- Weight sensitivity heatmap shows which categories are sensitive to specific factor emphasis.
+
+**Key bug fixed**: `for i, (cat, row)` loop variable shadowed the `cat` DataFrame — renamed to `cat_name`.
+**Module fix**: `sensitivity_analysis()` referenced `category_l2` column; updated to auto-detect `category_l1`.
+
+### 11. Findings & Recommendations (Notebook 06)
+
+**Executive summary headline**: 73% of EU food products score C/D/E (unhealthy), while PL penetration among healthy (A/B) products is only ~10%. This creates a clear market opening.
+
+**Top 3 actionable picks** (categories with >=1000 products):
+1. **Crepes & Galettes**: Score 0.689, easiest reformulation (37% sugar, 56% sat fat, 27% salt reductions)
+2. **Condiments & Sauces**: Score 0.672, large market (31K products), mainly needs salt reduction
+3. **Breakfast**: Score 0.663, highest gap but challenging reformulation (84% sugar reduction needed)
+
+**Strategic recommendations split** by retailer type:
+- Discount retailers (Lidl, Aldi, Mercadona): focus on Snacks, Condiments, Breakfast — volume play
+- Premium supermarkets (AH, Carrefour): focus on Spreads, Crêpes, Desserts — premium health tier
+
+**Outputs**: `results/executive_dashboard.png` (4-panel summary), `results/final_opportunity_map.png`
+
+**All 6 analysis notebooks complete and executing successfully.**
