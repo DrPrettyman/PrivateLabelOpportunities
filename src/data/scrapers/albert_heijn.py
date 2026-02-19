@@ -1,21 +1,32 @@
 """Albert Heijn (Netherlands) product catalogue scraper.
 
-Uses the undocumented mobile API at api.ah.nl/mobile-services/.
-Anonymous token obtainable via POST to /mobile-auth/v1/auth/token/anonymous.
+Uses the mobile API at api.ah.nl/mobile-services/.
+Anonymous token obtainable via POST to /mobile-auth/v1/auth/token/anonymous
+with body {"clientId": "appie"}.
 
-Key advantage:
-    AH returns EAN barcodes AND full nutritional data directly,
-    enabling high-confidence joins to Open Food Facts and cross-validation
-    of nutritional values.
+API structure (verified Feb 2026):
+    /mobile-services/product/search/v2
+        - params: query, size (max 100), page, taxonomyId
+        - returns: products list, page info, filters (with taxonomy categories)
+
+Product fields from search:
+    webshopId, title, brand, priceBeforeBonus, unitPriceDescription,
+    mainCategory, subCategory, salesUnitSize, nutriscore (A-E),
+    propertyIcons, images
 
 Private label identification:
-    AH's "AH" and "AH Biologisch" brands are clearly labelled in the
-    brand field.
+    AH's brands (AH, AH Biologisch, AH Excellent, AH Terra) are clearly
+    labelled in the brand field. AH brand alone has 6,135+ products.
+
+Limitation:
+    No EAN barcode or detailed nutrition in search results.
+    Nutriscore grade IS available. Join to OFF via fuzzy name matching.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 
 import requests
 
@@ -26,100 +37,171 @@ logger = logging.getLogger(__name__)
 AUTH_URL = "https://api.ah.nl/mobile-auth/v1/auth/token/anonymous"
 API_BASE = "https://api.ah.nl/mobile-services"
 
-AH_PL_PREFIXES = ("ah ", "ah-")
+AH_PL_BRANDS = {"ah", "ah biologisch", "ah excellent", "ah terra", "ah basic"}
+
+# Non-food taxonomy categories to skip
+AH_SKIP_CATEGORIES = {
+    "lichaamsverzorging", "haarverzorging", "zelfzorg", "mondhygiene",
+    "deodorant", "bad en douche", "intieme hygiëne", "gezichtsverzorging",
+    "shampoo", "wasmiddelen, wasverzachters", "wasmiddel",
+    "schoonmaakmiddelen", "toiletreinigers & verfrissers", "kaarsen",
+    "katten", "honden", "nat kattenvoer", "supplementen",
+    "vitamines & mineralen", "sportvoeding",
+}
 
 
 class AlbertHeijnScraper(BaseScraper):
     """Scraper for Albert Heijn's mobile API."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, include_non_food: bool = False, **kwargs):
+        kwargs.setdefault("request_delay", 1.0)
         super().__init__(retailer_name="albert_heijn", **kwargs)
         self.session = requests.Session()
+        self.session.headers.update({
+            "User-Agent": "Appie/8.22.3",
+            "x-application": "AHWEBSHOP",
+        })
         self._token: str | None = None
+        self.include_non_food = include_non_food
 
     def _authenticate(self) -> None:
         """Obtain an anonymous access token."""
-        resp = self.session.post(AUTH_URL, json={})
+        resp = self.session.post(AUTH_URL, json={"clientId": "appie"})
         resp.raise_for_status()
         self._token = resp.json().get("access_token")
         self.session.headers.update({"Authorization": f"Bearer {self._token}"})
         logger.info("Obtained anonymous AH token")
 
     def scrape_categories(self) -> list[dict]:
-        """Fetch category tree from AH API."""
+        """Fetch taxonomy categories from the search API filters."""
         if not self._token:
             self._authenticate()
+
         resp = self._request_with_retry(
-            self.session, f"{API_BASE}/product/search/v2",
-            params={"query": "", "size": 0},
+            self.session,
+            f"{API_BASE}/product/search/v2",
+            params={"size": 1, "page": 0},
         )
-        # Extract taxonomy from response
         data = resp.json()
+
+        taxonomy_filter = next(
+            (f for f in data.get("filters", []) if f.get("type") == "TAXONOMY"),
+            None,
+        )
+        if not taxonomy_filter:
+            logger.warning("No TAXONOMY filter found in AH search response")
+            return []
+
         categories = []
-        for taxonomy in data.get("taxonomies", []):
-            for item in taxonomy.get("children", []):
-                categories.append({"id": str(item.get("id", "")), "name": item.get("name", "")})
+        for opt in taxonomy_filter.get("options", []):
+            name = opt.get("label", "").lower()
+            if not self.include_non_food and name in AH_SKIP_CATEGORIES:
+                logger.info("Skipping non-food category: %s", opt.get("label"))
+                continue
+            categories.append({
+                "id": str(opt["id"]),
+                "name": opt.get("label", ""),
+                "count": opt.get("count", 0),
+            })
+
+        logger.info("Found %d food taxonomy categories", len(categories))
         return categories
 
     def scrape_products(self, category_id: str) -> list[Product]:
-        """Fetch all products in an AH category."""
+        """Fetch all products in an AH taxonomy category via pagination."""
         if not self._token:
             self._authenticate()
-        self._rate_limit()
 
         products = []
         page = 0
+
         while True:
+            self._rate_limit()
             resp = self._request_with_retry(
-                self.session, f"{API_BASE}/product/search/v2",
+                self.session,
+                f"{API_BASE}/product/search/v2",
                 params={"taxonomyId": category_id, "size": 100, "page": page},
             )
             data = resp.json()
-            for item in data.get("products", []):
-                products.append(self._parse_product(item, category_id))
-            if page >= data.get("page", {}).get("totalPages", 0) - 1:
+
+            for raw in data.get("products", []):
+                products.append(self._parse_product(raw))
+
+            page_info = data.get("page", {})
+            total_pages = page_info.get("totalPages", 0)
+
+            if page >= total_pages - 1:
                 break
             page += 1
-            self._rate_limit()
 
         return products
 
-    def _parse_product(self, raw: dict, category_id: str) -> Product:
-        """Convert raw AH API response to a Product record."""
-        brand = raw.get("brand", "")
-        nutrition = raw.get("nutritionInfo", {})
+    def run(self) -> "pd.DataFrame":
+        """Execute full AH scrape."""
+        import pandas as pd
+
+        logger.info("Starting scrape for %s", self.retailer_name)
+        categories = self.scrape_categories()
+        logger.info("Found %d categories to scrape", len(categories))
+
+        for cat in categories:
+            products = self.scrape_products(cat["id"])
+            self._products.extend(products)
+            logger.info(
+                "  %s (id=%s): %d products (expected ~%d)",
+                cat["name"], cat["id"], len(products), cat["count"],
+            )
+
+        # Deduplicate — products may appear in multiple taxonomy categories
+        df = self.to_dataframe()
+        before_dedup = len(df)
+        df = df.drop_duplicates(subset=["product_id"])
+        logger.info(
+            "Scraped %d total products (%d after dedup) from %s",
+            before_dedup, len(df), self.retailer_name,
+        )
+        return df
+
+    def _parse_product(self, raw: dict) -> Product:
+        """Convert raw AH search result to a Product record."""
+        brand = raw.get("brand", "") or ""
+        price = raw.get("priceBeforeBonus")
+        nutriscore = raw.get("nutriscore")
+
+        # Parse unit price from description like "prijs per liter €0.95"
+        unit_price, unit = self._parse_unit_price(raw.get("unitPriceDescription", ""))
+
         return Product(
             retailer="albert_heijn",
             product_id=str(raw.get("webshopId", "")),
             name=raw.get("title", ""),
             brand=brand,
-            price_eur=raw.get("priceBeforeBonus", raw.get("currentPrice")),
-            unit_price_eur=raw.get("unitPriceDescription"),
-            category_path=[category_id],
-            ean=raw.get("gtin"),
-            energy_kcal_100g=self._extract_nutrient(nutrition, "energy"),
-            fat_100g=self._extract_nutrient(nutrition, "fat"),
-            saturated_fat_100g=self._extract_nutrient(nutrition, "saturatedFat"),
-            sugars_100g=self._extract_nutrient(nutrition, "sugars"),
-            salt_100g=self._extract_nutrient(nutrition, "salt"),
-            fiber_100g=self._extract_nutrient(nutrition, "fiber"),
-            proteins_100g=self._extract_nutrient(nutrition, "protein"),
+            price_eur=price,
+            unit_price_eur=unit_price,
+            unit_price_unit=unit,
+            category_path=[
+                raw.get("mainCategory", ""),
+                raw.get("subCategory", ""),
+            ],
             is_private_label=self._is_private_label(brand),
         )
 
     @staticmethod
-    def _extract_nutrient(nutrition: dict, key: str) -> float | None:
-        """Extract a nutrient value from AH nutrition info dict."""
-        for item in nutrition.get("nutrients", []):
-            if item.get("name", "").lower().startswith(key.lower()):
-                try:
-                    return float(item.get("value", 0))
-                except (ValueError, TypeError):
-                    return None
-        return None
+    def _parse_unit_price(description: str) -> tuple[float | None, str | None]:
+        """Parse 'prijs per liter €0.95' into (0.95, 'liter')."""
+        if not description:
+            return None, None
+        match = re.search(r"per\s+(\w+)\s+€\s*([\d.,]+)", description)
+        if match:
+            unit = match.group(1)
+            try:
+                value = float(match.group(2).replace(",", "."))
+                return value, unit
+            except ValueError:
+                return None, unit
+        return None, None
 
     @staticmethod
     def _is_private_label(brand: str) -> bool:
         """Check if a brand is Albert Heijn private label."""
-        lower = brand.lower().strip()
-        return lower.startswith(AH_PL_PREFIXES) or lower == "ah"
+        return brand.lower().strip() in AH_PL_BRANDS
