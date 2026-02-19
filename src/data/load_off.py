@@ -11,6 +11,9 @@ Expected columns after download:
     unique_scans_n, energy_kcal_100g, fat_100g, saturated_fat_100g,
     sugars_100g, salt_100g, fiber_100g, proteins_100g,
     carbohydrates_100g, sodium_100g
+
+Note: product_name comes as a list of structs [{lang, text}, ...] from
+the Parquet schema. We extract the 'main' or first entry to a plain string.
 """
 
 from __future__ import annotations
@@ -18,12 +21,38 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 
 # Default path for the pre-filtered EU data
 DEFAULT_PATH = Path("data/raw/off_eu.parquet")
+
+# Nutri-Score grades that are not real grades
+INVALID_NUTRISCORE = {"", "nan", "none", "unknown", "not-applicable"}
+
+
+def _extract_product_name(name_field) -> str | None:
+    """Extract plain text from the product_name struct list.
+
+    OFF stores product_name as [{lang: 'main', text: '...'}, {lang: 'fr', text: '...'}, ...]
+    We prefer the 'main' entry, falling back to the first entry.
+    """
+    if name_field is None or (isinstance(name_field, float)):
+        return None
+    if isinstance(name_field, str):
+        return name_field
+    if isinstance(name_field, (list, np.ndarray)):
+        # Look for 'main' language first
+        for entry in name_field:
+            if isinstance(entry, dict) and entry.get("lang") == "main":
+                return entry.get("text")
+        # Fallback: first entry with text
+        for entry in name_field:
+            if isinstance(entry, dict) and entry.get("text"):
+                return entry.get("text")
+    return None
 
 
 def load_off_eu(path: Path | None = None) -> pd.DataFrame:
@@ -45,18 +74,31 @@ def load_off_eu(path: Path | None = None) -> pd.DataFrame:
     df = pd.read_parquet(path)
 
     logger.info("Loaded %d products, %d columns", len(df), len(df.columns))
-    logger.info("Columns: %s", list(df.columns))
 
-    # Basic type coercion
+    # Extract product_name from struct list to plain string
+    if "product_name" in df.columns:
+        sample = df["product_name"].dropna().iloc[0] if len(df) > 0 else None
+        if isinstance(sample, (list, np.ndarray)):
+            logger.info("Extracting product_name from struct list...")
+            df["product_name"] = df["product_name"].apply(_extract_product_name)
+
+    # Clean nutriscore_grade
     if "nutriscore_grade" in df.columns:
         df["nutriscore_grade"] = df["nutriscore_grade"].astype(str).str.lower().str.strip()
-        df.loc[df["nutriscore_grade"].isin(["", "nan", "none", "unknown"]), "nutriscore_grade"] = pd.NA
+        df.loc[df["nutriscore_grade"].isin(INVALID_NUTRISCORE), "nutriscore_grade"] = pd.NA
 
     if "nova_group" in df.columns:
         df["nova_group"] = pd.to_numeric(df["nova_group"], errors="coerce")
 
     if "code" in df.columns:
         df["code"] = df["code"].astype(str).str.strip()
+
+    logger.info(
+        "After cleaning: %d products, nutriscore coverage %.1f%%, brands coverage %.1f%%",
+        len(df),
+        df["nutriscore_grade"].notna().mean() * 100 if "nutriscore_grade" in df.columns else 0,
+        df["brands"].notna().mean() * 100 if "brands" in df.columns else 0,
+    )
 
     return df
 
@@ -102,7 +144,6 @@ def profile_off(df: pd.DataFrame) -> dict:
 
     # Country distribution (top 10)
     if "countries_tags" in df.columns:
-        # countries_tags is a list column from Parquet
         countries = df["countries_tags"].dropna().explode().value_counts().head(10)
         profile["top_countries"] = countries.to_dict()
 
