@@ -76,7 +76,8 @@ def sensitivity_analysis(
         w = OpportunityWeights(*raw_weights)
         scored = compute_opportunity_score(df.copy(), w)
         scored["rank"] = range(1, len(scored) + 1)
-        ranks.append(scored[["category_l2", "rank"]].set_index("category_l2"))
+        cat_col = "category_l1" if "category_l1" in scored.columns else "category_l2"
+        ranks.append(scored[[cat_col, "rank"]].set_index(cat_col))
 
     all_ranks = pd.concat(ranks, axis=1)
     return pd.DataFrame({

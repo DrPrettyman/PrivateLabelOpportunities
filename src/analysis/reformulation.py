@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
 from src.data.nutriscore import compute_nutriscore
@@ -50,12 +51,12 @@ def analyse_reformulation(
             continue
 
         median_profile = {
-            "energy_kcal": poor.get("energy-kcal_100g", pd.Series()).median(),
-            "sugars_g": poor.get("sugars_100g", pd.Series()).median(),
-            "saturated_fat_g": poor.get("saturated-fat_100g", pd.Series()).median(),
-            "salt_g": poor.get("salt_100g", pd.Series()).median(),
-            "fibre_g": poor.get("fiber_100g", pd.Series()).median(),
-            "proteins_g": poor.get("proteins_100g", pd.Series()).median(),
+            "energy_kcal": _safe_median(poor, "energy_kcal_100g"),
+            "sugars_g": _safe_median(poor, "sugars_100g"),
+            "saturated_fat_g": _safe_median(poor, "saturated_fat_100g"),
+            "salt_g": _safe_median(poor, "salt_100g"),
+            "fibre_g": _safe_median(poor, "fiber_100g"),
+            "proteins_g": _safe_median(poor, "proteins_100g"),
         }
 
         targets = _find_reformulation_path(median_profile, target_grade)
@@ -65,43 +66,55 @@ def analyse_reformulation(
     return results
 
 
+def _safe_median(df: pd.DataFrame, col: str) -> float:
+    """Get median of a column, returning 0 if column missing or all NaN."""
+    if col not in df.columns:
+        return 0.0
+    val = df[col].median()
+    return 0.0 if pd.isna(val) else float(val)
+
+
 def _find_reformulation_path(
     profile: dict[str, float],
     target_grade: str,
 ) -> list[ReformulationTarget]:
     """Search for nutrient reductions that achieve the target grade.
 
-    Tests reducing each negative nutrient (sugar, salt, sat fat) and
-    increasing each positive nutrient (fibre, protein) incrementally.
+    Tests reducing each negative nutrient (sugar, salt, sat fat) individually.
     """
     targets = []
     reducible = ["sugars_g", "saturated_fat_g", "salt_g"]
 
+    # Check current grade first
+    current = compute_nutriscore(**profile)
+    if current["grade"] <= target_grade:
+        return []  # Already at or better than target
+
     for nutrient in reducible:
-        current = profile.get(nutrient, 0) or 0
-        if current <= 0:
+        current_val = profile.get(nutrient, 0) or 0
+        if current_val <= 0:
             continue
 
-        # Binary search for the threshold
-        low, high = 0.0, current
+        # Binary search for the minimum value that achieves target grade
+        low, high = 0.0, current_val
         best = None
-        for _ in range(20):  # enough precision
+        for _ in range(20):
             mid = (low + high) / 2
             test_profile = profile.copy()
             test_profile[nutrient] = mid
             result = compute_nutriscore(**test_profile)
-            if result["grade"].lower() <= target_grade.lower():
+            if result["grade"] <= target_grade:
                 best = mid
-                low = mid
+                low = mid  # Try higher (less reduction needed)
             else:
-                high = mid
+                high = mid  # Need to reduce more
 
-        if best is not None and best < current:
+        if best is not None and best < current_val:
             targets.append(ReformulationTarget(
                 nutrient=nutrient,
-                current_median=current,
+                current_median=round(current_val, 1),
                 target_value=round(best, 1),
-                reduction_pct=round((1 - best / current) * 100, 1),
+                reduction_pct=round((1 - best / current_val) * 100, 1),
                 resulting_grade=target_grade,
             ))
 
