@@ -82,8 +82,8 @@ def compute_nutrient_stats(
 ) -> pd.DataFrame:
     """Compute per-category summary stats for key nutrients."""
     nutrient_cols = [
-        "sugars_100g", "salt_100g", "saturated-fat_100g",
-        "fiber_100g", "proteins_100g", "energy-kcal_100g",
+        "sugars_100g", "salt_100g", "saturated_fat_100g",
+        "fiber_100g", "proteins_100g", "energy_kcal_100g",
     ]
     available = [c for c in nutrient_cols if c in df.columns]
 
