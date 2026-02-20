@@ -481,3 +481,40 @@ Together, these two projects cover:
 | Interview strength | Rec-sys, cold start, A/B testing | Scraping, causal inference, domain expertise, ethics |
 
 No overlap in domain, technique, or framing — but both demonstrate the same core competency: taking a question companies pay consultants to answer and building the data-driven version from open sources.
+
+---
+
+## Phase 7: Portfolio Polish
+
+### Tests
+
+Create `tests/` directory at project root. pytest already in pyproject.toml dev extras. Use sample parquets from `data/sample/` plus small synthetic DataFrames.
+
+- [ ] Create tests/ directory (pytest already in pyproject.toml)
+- [ ] `test_nutriscore.py` — Nutri-Score computation: validate against published algorithm with known food products; test boundary cases between grades
+- [ ] `test_join.py` — `join_on_ean()` and fuzzy matching: small product lists with known EANs; assert match rate, unmatched tracking
+- [ ] `test_nutritional_gaps.py` — `compute_nutritional_landscape()`, `compute_nutritional_gap()`: feed category with known Nutri-Score distribution; assert gap metric correctness
+- [ ] `test_opportunity_scorer.py` — `compute_opportunity_score()`, `sensitivity_analysis()`: known inputs with hand-calculated expected scores; assert normalisation [0,1], rank stability
+- [ ] `test_category_landscape.py` — HHI calculation, PL penetration: synthetic brand/product counts; assert HHI range [0,1], penetration percentages
+- [ ] `test_brand_classifier.py` — PL classifier pipeline: small labelled dataset; assert F1 above threshold, correct label types
+
+Run: `pytest tests/ -v`
+
+### Dashboard & Deployment
+
+Create `src/visualisation/dashboard.py` (Streamlit). Load from `data/sample/` parquets and pre-computed `results/` CSVs — no raw data processing at runtime.
+
+- [ ] Create src/visualisation/dashboard.py (Streamlit)
+- [ ] Tab: Category Landscape — treemap by category size (coloured by PL penetration), HHI bar chart, country/retailer filter
+- [ ] Tab: Nutritional Gaps — scatter of Nutri-Score %C-E vs PL penetration, category cards per grade, highlight >80% unhealthy + <20% PL
+- [ ] Tab: Opportunity Ranking — sortable table of top 25 categories by composite score, sensitivity stability indicator
+- [ ] Tab: Price Gaps — box plots of brand vs PL prices by category and retailer
+- [ ] Tab: Data Quality — EAN join success rate, OFF coverage by country, record counts
+- [ ] Add dashboard screenshot to README with "How to Run" instructions
+- [ ] Deploy to Streamlit Community Cloud with live URL in README
+
+### Communication
+
+- [ ] Add architecture diagram (OFF → scrapers → join → analysis → scoring → dashboard)
+- [ ] Add "Limitations" section to README (crowd-sourced data coverage, point-in-time scrapes, category mapping subjectivity)
+- [ ] Draft blog post outline
