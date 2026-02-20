@@ -253,4 +253,46 @@ AH PL brands: AH, AH Biologisch, AH Excellent, AH Terra, AH Basic.
 
 **Outputs**: `results/executive_dashboard.png` (4-panel summary), `results/final_opportunity_map.png`
 
-**All 6 analysis notebooks complete and executing successfully.**
+### 12. Predictive Model (Notebook 05b)
+
+**Success predictor** (Gradient Boosted Trees):
+- Label: top 3 PL products by OFF scan count per category (522 leaders)
+- 17 features: 9 nutrients, Nutri-Score ordinal, NOVA, 5 label flags, nutriscore_computed
+- Training subset: 11K balanced (522 leaders + 10.4K non-leaders)
+- **CV AUC: 0.653** — modest, as expected from noisy scan-count labels
+- Top features by importance: energy, sugars, salt, protein, Nutri-Score
+- PL leaders have slightly lower sugar (2.8 vs 3.6g/100g) and similar A/B rate (29%)
+
+**Brand classifier** (TF-IDF char n-grams + logistic regression):
+- **CV F1: 0.996** — near-perfect; brand names are highly predictive of PL status
+- Top PL patterns: "hacen", "carre", "ah ", "lidl", "bonus" etc.
+- Can catch PL products the dictionary missed
+
+**Performance fix**: `.apply()` on labels_tags was too slow on 500K rows. Replaced with vectorised `.str.contains()` on string representation. Also subsampled training data (was timing out at 300s).
+
+**All 7 analysis notebooks (01-06 + 05b) complete and executing successfully.**
+
+### 13. Phase 6 — Communication & Polish
+
+**README.md**: Updated with actual findings (was placeholder text). Includes methodology with real numbers (2.57M products, 27 EU markets, 706K Nutri-Score computations), top opportunity categories, setup instructions, notebook table.
+
+**Sample data** created in `data/sample/`:
+- `off_eu_sample.parquet` — 1,000 random EU products
+- `category_summary.parquet` — 45-category summary with HHI, PL penetration, nutritional gap
+- `opportunity_scores.parquet` — final ranked opportunity scores
+
+**Dependencies**: Added `duckdb>=1.0.0` to both `requirements.txt` and `environment.yml` (was missing, used in download_off.py).
+
+**Security check**: No API keys, passwords, or secrets in codebase. AH scraper uses anonymous tokens only.
+
+**.gitignore**: Comprehensive — covers data/raw, data/scraped, data/processed, .env, credentials, IDE files. `data/sample/` is explicitly included via `!data/sample/`.
+
+**Results**: 20 PNG charts in `results/` across all 7 notebooks.
+
+**Project complete.** All 6 phases delivered:
+1. Data collection (OFF + Mercadona + Albert Heijn)
+2. Data cleaning & enrichment (Nutri-Score computation, PL flagging, brand normalisation)
+3. Category landscape EDA (HHI, PL penetration, Nutri-Score distributions)
+4. Nutritional gap deep dives (reformulation feasibility, cross-country variation)
+5. Opportunity scoring (composite score, Monte Carlo sensitivity, predictive model)
+6. Communication & polish (README, sample data, charts, notes)
