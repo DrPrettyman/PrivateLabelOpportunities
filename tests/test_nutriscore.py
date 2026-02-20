@@ -53,11 +53,16 @@ class TestComputeNutriscore:
 
     def test_salt_to_sodium_conversion(self):
         """Salt is converted to sodium (mg) via * 400 before scoring."""
-        # 2.25g salt = 900mg sodium → max sodium points (10)
+        # 2.25g salt = 900mg sodium → exactly on threshold 900 → score 9
         result = compute_nutriscore(
             energy_kcal=0, sugars_g=0, saturated_fat_g=0, salt_g=2.25,
         )
-        assert result["negative_total"] == 10  # only sodium contributes
+        assert result["negative_total"] == 9  # only sodium contributes
+        # Above max threshold → 10 points
+        result2 = compute_nutriscore(
+            energy_kcal=0, sugars_g=0, saturated_fat_g=0, salt_g=2.30,
+        )
+        assert result2["negative_total"] == 10
 
     def test_grade_boundaries(self):
         """Test that boundary scores map to correct grades."""
