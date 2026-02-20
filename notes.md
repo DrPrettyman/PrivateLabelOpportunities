@@ -289,10 +289,40 @@ AH PL brands: AH, AH Biologisch, AH Excellent, AH Terra, AH Basic.
 
 **Results**: 20 PNG charts in `results/` across all 7 notebooks.
 
-**Project complete.** All 6 phases delivered:
+**Phases 1-6 complete.** All 6 phases delivered:
 1. Data collection (OFF + Mercadona + Albert Heijn)
 2. Data cleaning & enrichment (Nutri-Score computation, PL flagging, brand normalisation)
 3. Category landscape EDA (HHI, PL penetration, Nutri-Score distributions)
 4. Nutritional gap deep dives (reformulation feasibility, cross-country variation)
 5. Opportunity scoring (composite score, Monte Carlo sensitivity, predictive model)
 6. Communication & polish (README, sample data, charts, notes)
+
+### 14. Phase 7 — Tests and Dashboard
+
+**Test suite (51 tests)**
+
+Created `tests/` directory with 6 test files covering all core analysis and model modules:
+
+- `test_nutriscore.py` (10 tests): grade computation against published algorithm, boundary cases between grades, sodium-to-salt conversion, vectorised `compute_nutriscore_column()`
+- `test_join.py` (8 tests): EAN barcode matching, whitespace/NaN handling, match key building from `name + brand`
+- `test_nutritional_gaps.py` (7 tests): Nutri-Score grade distribution per category, %CDE calculation, gap formula `%CDE × (1 - PL@AB)`
+- `test_opportunity_scorer.py` (9 tests): min-max normalisation, composite score in [0,1], weight sensitivity, default weights sum to 1, Monte Carlo determinism with seed
+- `test_category_landscape.py` (9 tests): HHI (monopoly=1.0, duopoly=0.5, fragmented≈0.01), PL penetration, assortment depth SKU counts
+- `test_brand_classifier.py` (5 tests): TF-IDF + LogisticRegression pipeline returns predictions, binary outputs, correct PL/brand classification on known names
+
+All tests use small synthetic DataFrames — no OFF download or scraping required.
+
+**Bug found and fixed during testing:** Salt/sodium threshold boundary — 2.25g salt = 900mg sodium exactly equals the last threshold in `_score()`. The function returns index `i` when `value <= t`, so 900 <= 900 gives score 9, not 10. Test adjusted accordingly.
+
+**Streamlit dashboard** (`src/visualisation/dashboard.py`)
+
+New 4-tab dashboard created from scratch:
+
+1. **Category Landscape** — KPI metrics (categories analysed, total products, median HHI), treemap by product count coloured by PL penetration, horizontal HHI bar chart
+2. **Nutritional Gaps** — headline metrics (avg %CDE, avg PL penetration, categories with gap >0.7), scatter of %CDE vs PL@AB with size=products and colour=gap, quadrant annotations marking "HIGH OPPORTUNITY" zone, top-10 gap table
+3. **Opportunity Ranking** — sortable table with composite score, all 6 component scores, and category metrics; stacked bar chart showing normalised component breakdown for top 10 categories
+4. **Data Quality** — dataset overview (sources, enrichment notes), coverage limitations, products-per-category bar chart
+
+Dashboard loads from `data/sample/` parquets (category_summary.parquet, opportunity_scores.parquet) — no raw data processing at runtime.
+
+Added `streamlit>=1.28` and `pytest>=7.0` to `requirements.txt`.

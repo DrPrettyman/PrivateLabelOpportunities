@@ -78,6 +78,22 @@ PYTHONPATH=. python scripts/build_dataset.py
 jupyter notebook notebooks/
 ```
 
+## Interactive Dashboard
+
+```bash
+streamlit run src/visualisation/dashboard.py
+```
+
+Four tabs: Category Landscape (treemap by product count coloured by PL penetration, HHI bar chart), Nutritional Gaps (scatter of %CDE vs PL penetration with quadrant annotations, top-10 gap table), Opportunity Ranking (sortable composite score table, stacked component breakdown for top 10), and Data Quality (dataset overview, coverage notes, products-per-category bar chart). Loads from `data/sample/` parquets — no raw data processing at runtime.
+
+## Tests
+
+```bash
+pytest tests/ -v
+```
+
+51 tests covering Nutri-Score computation (boundary cases, sodium conversion, vectorised column), EAN/fuzzy joining, nutritional gap analysis, opportunity scoring (normalisation, weight sensitivity, Monte Carlo determinism), category landscape metrics (HHI, PL penetration, assortment depth), and brand classification. All tests use synthetic data — no large datasets required.
+
 ## Notebooks
 
 | # | Notebook | Description |
