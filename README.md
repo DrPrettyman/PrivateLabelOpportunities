@@ -80,11 +80,20 @@ jupyter notebook notebooks/
 
 ## Interactive Dashboard
 
+**Live demo:** [pl-dashboard-production.up.railway.app](https://pl-dashboard-production.up.railway.app)
+
+Four tabs: Category Landscape (treemap by product count coloured by PL penetration, HHI bar chart), Nutritional Gaps (scatter of %CDE vs PL penetration with quadrant annotations, top-10 gap table), Opportunity Ranking (sortable composite score table, stacked component breakdown for top 10), and Data Quality (dataset overview, coverage notes, products-per-category bar chart). Loads from `data/sample/` parquets — no raw data processing at runtime.
+
+Run locally:
 ```bash
 streamlit run src/visualisation/dashboard.py
 ```
 
-Four tabs: Category Landscape (treemap by product count coloured by PL penetration, HHI bar chart), Nutritional Gaps (scatter of %CDE vs PL penetration with quadrant annotations, top-10 gap table), Opportunity Ranking (sortable composite score table, stacked component breakdown for top 10), and Data Quality (dataset overview, coverage notes, products-per-category bar chart). Loads from `data/sample/` parquets — no raw data processing at runtime.
+Or via Docker:
+```bash
+docker build -t pl-dashboard .
+docker run -p 8501:8501 pl-dashboard
+```
 
 ## Tests
 
