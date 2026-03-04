@@ -84,7 +84,7 @@ jupyter notebook notebooks/
 
 ## Interactive Dashboard
 
-**Live demo:** [pl-dashboard-production.up.railway.app](https://pl-dashboard-production.up.railway.app)
+**Live demo:** [joshuaprettyman.com/projects/pl-dashboard](https://joshuaprettyman.com/projects/pl-dashboard)
 
 Four tabs: Category Landscape (treemap by product count coloured by PL penetration, HHI bar chart), Nutritional Gaps (scatter of %CDE vs PL penetration with quadrant annotations, top-10 gap table), Opportunity Ranking (sortable composite score table, stacked component breakdown for top 10), and Data Quality (dataset overview, coverage notes, products-per-category bar chart). Loads from `data/sample/` parquets — no raw data processing at runtime.
 
