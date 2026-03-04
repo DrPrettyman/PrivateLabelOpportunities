@@ -16,6 +16,8 @@ Analysis of 2.57M food products across 27 EU markets reveals that **73% of produ
 
 At published private label margin rates (25-30%), these categories represent significant annual revenue opportunity per retail chain.
 
+![Executive Dashboard](results/executive_dashboard.png)
+
 ## Key Findings
 
 1. **Massive nutritional gap**: 30 of 45 food categories have >70% unhealthy products with minimal healthy PL alternatives
@@ -23,6 +25,8 @@ At published private label margin rates (25-30%), these categories represent sig
 3. **Markets are fragmented**: Almost all categories have low brand concentration (HHI <0.05) — easy to enter
 4. **Cross-country variation**: The same category can be 95% CDE in one country but 70% in another, enabling targeted launches
 5. **PL leaders have slightly better nutrition**: Lower sugar (2.8 vs 3.6g/100g) than average products
+
+![Opportunity Map — Score vs Market Size](results/final_opportunity_map.png)
 
 ## Methodology
 
